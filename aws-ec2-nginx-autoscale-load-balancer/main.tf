@@ -73,11 +73,11 @@ resource "aws_autoscaling_policy" "as_policy" {
 
 
 resource "aws_route53_zone" "primary" {
-  name = "***REMOVED***"
+  name = "pakallis.xyz"
 }
 
 resource "aws_route53_record" "pakallis" {
-  name    = "elb.***REMOVED***"
+  name    = "elb.pakallis.xyz"
   type    = "A"
   zone_id = aws_route53_zone.primary.id
   alias {
