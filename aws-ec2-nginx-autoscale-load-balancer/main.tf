@@ -85,7 +85,6 @@ resource "aws_route53_record" "pakallis" {
   alias {
     name                   = aws_elb.main_elb.dns_name
     evaluate_target_health = true
-    zone_id = aws_elb.main_elb.zone_id
+    zone_id                = aws_elb.main_elb.zone_id
   }
 }
-
