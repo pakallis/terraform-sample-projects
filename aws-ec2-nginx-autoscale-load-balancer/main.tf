@@ -2,10 +2,8 @@
 # TODO: Attach load balancer to auto-scaling group
 # TODO: Add public key to vars
 # TODO: Add outputs with ip of instances and load balancer
+# TODO: SSL certificate
 # TODO: Define security groups for launch template / autoscaler / elb
-
-
-
 
 terraform {
   required_providers {
@@ -22,7 +20,7 @@ provider "aws" {
 
 resource "aws_key_pair" "deployer" {
   key_name   = "deployer"
-  public_key = ""
+  public_key = var.public_key
 }
 
 resource "aws_launch_template" "main_lt" {
@@ -72,14 +70,18 @@ resource "aws_autoscaling_policy" "as_policy" {
 }
 
 
-resource "aws_route53_zone" "primary" {
-  name = "pakallis.xyz"
+# You must have an already existing hosted zone in AWS.
+# Your have to create the zone manually, so that terraform
+# does not destroy the hosted zone and domain name.
+
+data "aws_route53_zone" "primary" {
+  name = var.domain_name
 }
 
 resource "aws_route53_record" "pakallis" {
-  name    = "elb.pakallis.xyz"
+  name    = "nginx.${data.aws_route53_zone.primary.name}"
   type    = "A"
-  zone_id = aws_route53_zone.primary.id
+  zone_id = data.aws_route53_zone.primary.zone_id
   alias {
     name                   = aws_elb.main_elb.dns_name
     evaluate_target_health = true
