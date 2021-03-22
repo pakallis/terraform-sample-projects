@@ -1,5 +1,6 @@
 variable "public_key" {
   description = "The public key which will be uploaded to the instance so that you can ssh into it"
+  sensitive = true
 }
 
 variable "domain_name" {
