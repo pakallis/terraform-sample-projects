@@ -3,6 +3,8 @@
 # TODO: Define security groups for launch template / autoscaler / elb
 # TODO: Define IAM users for launch template / autoscaler / elb
 # TODO: Add RDS support
+# TODO: Instances should not have public ip
+# https://www.oss-group.co.nz/blog/automated-certificates-aws
 
 terraform {
   required_providers {
@@ -32,17 +34,25 @@ resource "aws_launch_template" "nginx_lt" {
 }
 
 
+# Find a certificate that is issued
+data "aws_acm_certificate" "issued_cert" {
+  domain   = "*.${var.domain_name}"
+  statuses = ["ISSUED"]
+}
+
+
 resource "aws_elb" "nginx_elb" {
   name = "nginx-elb"
   # TODO: Why should we define a subnet instead of an availability zone?
   subnets = ["subnet-21abc479"]
+  # SSL
   listener {
     instance_port     = 443
     instance_protocol = "https"
     lb_port           = 443
     lb_protocol       = "https"
+    ssl_certificate_id = data.aws_acm_certificate.issued_cert.arn
   }
-
   listener {
     instance_port     = 80
     instance_protocol = "http"
@@ -83,6 +93,7 @@ resource "aws_autoscaling_policy" "as_policy" {
 
 data "aws_route53_zone" "primary" {
   name = var.domain_name
+  private_zone = false
 }
 
 resource "aws_route53_record" "pakallis" {
