@@ -4,7 +4,14 @@
 # TODO: Define IAM users for launch template / autoscaler / elb
 # TODO: Add RDS support
 # TODO: Instances should not have public ip
+# TODO: Add load balancer logs
 # https://www.oss-group.co.nz/blog/automated-certificates-aws
+# Use an application load balancer to handle SSL termination as the class lb does
+# not seem to work
+# I will experiment with nginx configuration to find a solution for the classic
+# load balancer
+# Task -> Load balance grpc server with an application load balancer
+# Task -> Load balance a websockets server with an application or network load balancer
 
 terraform {
   required_providers {
@@ -44,6 +51,7 @@ data "aws_acm_certificate" "issued_cert" {
 resource "aws_elb" "nginx_elb" {
   name = "nginx-elb"
   # TODO: Why should we define a subnet instead of an availability zone?
+  # TODO: Do not hardcode subnet
   subnets = ["subnet-21abc479"]
   # SSL
   listener {
@@ -59,9 +67,17 @@ resource "aws_elb" "nginx_elb" {
     lb_port           = 80
     lb_protocol       = "http"
   }
+  health_check {
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+    timeout             = 3
+    target              = "HTTP:80"
+    interval            = 30
+  }
 }
 
 resource "aws_autoscaling_group" "nginx_asg" {
+  # TODO: Do not hardcode AZ
   availability_zones = ["us-east-1a"]
   desired_capacity   = 1
   max_size           = 2
