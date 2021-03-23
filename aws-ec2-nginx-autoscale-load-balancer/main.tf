@@ -47,12 +47,50 @@ data "aws_acm_certificate" "issued_cert" {
   statuses = ["ISSUED"]
 }
 
+resource "aws_s3_bucket_public_access_block" "public_access_block" {
+  # TODO: This policy creates a public bucket which is dangerous.
+  # Revisit this to make sure only the ELB is able to write in this bucket
+  bucket = aws_s3_bucket.s3_nginx_logs.id
+  block_public_acls = true
+  ignore_public_acls = true
+  block_public_policy = true
+  restrict_public_buckets = true
+}
+
+locals {
+  s3_bucket_name = "${var.domain_name}.nginx.logs"
+}
+
+data "aws_iam_policy_document" "main" {
+   statement {
+    sid    = "elb-logs-put-object"
+    effect = "Allow"
+    principals {
+      type        = "AWS"
+      identifiers = [data.aws_elb_service_account.main.arn]
+    }
+    actions   = ["s3:PutObject"]
+    resources = ["arn:aws:s3:::${local.s3_bucket_name}/*"]
+  }
+}
+
+
+resource "aws_s3_bucket" "s3_nginx_logs" {
+  acl = "log-delivery-write"
+  bucket = local.s3_bucket_name
+  policy        = data.aws_iam_policy_document.main.json
+}
+
+data "aws_elb_service_account" "main" {
+}
 
 resource "aws_elb" "nginx_elb" {
   name = "nginx-elb"
   # TODO: Why should we define a subnet instead of an availability zone?
   # TODO: Do not hardcode subnet
+  # Exactly one of availability_zones or subnets must be specified: this determines if the ELB exists in a VPC or in EC2-classic.
   subnets = ["subnet-21abc479"]
+
   # SSL
   listener {
     instance_port     = 443
@@ -71,8 +109,12 @@ resource "aws_elb" "nginx_elb" {
     healthy_threshold   = 2
     unhealthy_threshold = 2
     timeout             = 3
-    target              = "HTTP:80"
+    target              = "HTTP:80/"
     interval            = 30
+  }
+  access_logs {
+    bucket        = aws_s3_bucket.s3_nginx_logs.bucket
+    interval      = 5
   }
 }
 
@@ -112,7 +154,7 @@ data "aws_route53_zone" "primary" {
   private_zone = false
 }
 
-resource "aws_route53_record" "pakallis" {
+resource "aws_route53_record" "main" {
   name    = "nginx.${data.aws_route53_zone.primary.name}"
   type    = "A"
   zone_id = data.aws_route53_zone.primary.zone_id
@@ -121,4 +163,8 @@ resource "aws_route53_record" "pakallis" {
     evaluate_target_health = true
     zone_id                = aws_elb.nginx_elb.zone_id
   }
+}
+
+output "url" {
+  value = "Visit https://${aws_route53_record.main.fqdn} to verify it works"
 }
