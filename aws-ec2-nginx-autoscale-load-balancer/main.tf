@@ -12,6 +12,10 @@
 # load balancer
 # Task -> Load balance grpc server with an application load balancer
 # Task -> Load balance a websockets server with an application or network load balancer
+# For TLS, We need to add the following to /etc/nginx/nginx.conf to redirect http -> https
+#if ($http_x_forwarded_proto != 'https') {
+#  return 301 https://$host$request_uri;
+#}
 
 terraform {
   required_providers {
@@ -94,8 +98,10 @@ resource "aws_elb" "nginx_elb" {
 
   # SSL
   listener {
-    instance_port     = 443
-    instance_protocol = "https"
+    # SSL termination happens in the load balancer, so
+    # we route requests to port 80 of nginx
+    instance_port     = 80
+    instance_protocol = "http"
     lb_port           = 443
     lb_protocol       = "https"
     ssl_certificate_id = data.aws_acm_certificate.issued_cert.arn
@@ -110,7 +116,9 @@ resource "aws_elb" "nginx_elb" {
     healthy_threshold   = 2
     unhealthy_threshold = 2
     timeout             = 3
-    target              = "HTTP:80/"
+    # For some strange reason, the AWS lb healthcheck fails if it is
+    # HTTP
+    target              = "TCP:80"
     interval            = 30
   }
   access_logs {
