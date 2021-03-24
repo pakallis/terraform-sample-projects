@@ -4,7 +4,7 @@
 # TODO: Define IAM users for launch template / autoscaler / elb
 # TODO: Add RDS support
 # TODO: Instances should not have public ip
-# TODO: Add load balancer logs
+# TODO: Rotate logs
 # https://www.oss-group.co.nz/blog/automated-certificates-aws
 # Use an application load balancer to handle SSL termination as the class lb does
 # not seem to work
