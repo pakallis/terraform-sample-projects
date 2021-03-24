@@ -79,6 +79,7 @@ resource "aws_s3_bucket" "s3_nginx_logs" {
   acl = "log-delivery-write"
   bucket = local.s3_bucket_name
   policy        = data.aws_iam_policy_document.main.json
+  force_destroy = true
 }
 
 data "aws_elb_service_account" "main" {
