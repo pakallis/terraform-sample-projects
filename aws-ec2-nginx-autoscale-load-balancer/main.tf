@@ -30,6 +30,97 @@ provider "aws" {
   region = "us-east-1"
 }
 
+
+resource "aws_vpc" "main_vpc" {
+  cidr_block = "10.0.0.0/16"
+  enable_dns_hostnames = true
+  enable_dns_support = true
+}
+
+
+resource "aws_internet_gateway" "gw" {
+  vpc_id = aws_vpc.main_vpc.id
+
+  tags = {
+    Name = "main"
+  }
+}
+
+resource "aws_subnet" "sub1a" {
+  availability_zone = "us-east-1a"
+  vpc_id     = aws_vpc.main_vpc.id
+  cidr_block = "10.0.1.0/24"
+  map_public_ip_on_launch = true
+  depends_on = [aws_internet_gateway.gw]
+
+}
+
+resource "aws_subnet" "sub1b" {
+  availability_zone = "us-east-1b"
+  vpc_id     = aws_vpc.main_vpc.id
+  cidr_block = "10.0.2.0/24"
+  map_public_ip_on_launch = true
+  depends_on = [aws_internet_gateway.gw]
+}
+
+
+resource "aws_route_table" "prod-public-crt" {
+    vpc_id = aws_vpc.main_vpc.id
+    
+    route {
+        //associated subnet can reach everywhere
+        cidr_block = "0.0.0.0/0" 
+        //CRT uses this IGW to reach internet
+        gateway_id = aws_internet_gateway.gw.id
+    }
+    depends_on = [aws_internet_gateway.gw]
+}
+
+resource "aws_route_table_association" "prod-crta-public-subnet-1a"{
+    subnet_id = aws_subnet.sub1a.id
+    route_table_id = aws_route_table.prod-public-crt.id
+}
+
+resource "aws_route_table_association" "prod-crta-public-subnet-1b"{
+    subnet_id = aws_subnet.sub1b.id
+    route_table_id = aws_route_table.prod-public-crt.id
+}
+
+resource "aws_security_group" "ssh-allowed" {
+    vpc_id = aws_vpc.main_vpc.id
+    
+    egress {
+        from_port = 0
+        to_port = 0
+        protocol = -1
+        cidr_blocks = ["0.0.0.0/0"]
+    }
+    ingress {
+        from_port = 22
+        to_port = 22
+        protocol = "tcp"
+        // This means, all ip address are allowed to ssh ! 
+        // Do not do it in the production. 
+        // Put your office or home address in it!
+        cidr_blocks = ["0.0.0.0/0"]
+    }
+    //If you do not add this rule, you can not reach the NGIX  
+    ingress {
+        from_port = 80
+        to_port = 80
+        protocol = "tcp"
+        cidr_blocks = ["0.0.0.0/0"]
+    }
+
+    ingress {
+        from_port = 443
+        to_port = 443
+        protocol = "tcp"
+        cidr_blocks = ["0.0.0.0/0"]
+    }
+}
+
+
 resource "aws_key_pair" "nginx_key_pair" {
   key_name   = "nginx-key-pair"
   public_key = var.public_key
@@ -42,6 +133,7 @@ resource "aws_launch_template" "nginx_lt" {
   instance_type = "t3.nano"
   key_name      = "nginx-key-pair"
   user_data     = filebase64("${path.module}/init.sh")
+  vpc_security_group_ids = [aws_security_group.ssh-allowed.id]
 }
 
 
@@ -92,9 +184,9 @@ data "aws_elb_service_account" "main" {
 resource "aws_elb" "nginx_elb" {
   name = "nginx-elb"
   # TODO: Why should we define a subnet instead of an availability zone?
-  # TODO: Do not hardcode subnet
   # Exactly one of availability_zones or subnets must be specified: this determines if the ELB exists in a VPC or in EC2-classic.
-  subnets = ["subnet-21abc479"]
+  subnets = [aws_subnet.sub1a.id, aws_subnet.sub1b.id]
+  security_groups = [aws_security_group.ssh-allowed.id]
 
   # SSL
   listener {
@@ -128,8 +220,7 @@ resource "aws_elb" "nginx_elb" {
 }
 
 resource "aws_autoscaling_group" "nginx_asg" {
-  # TODO: Do not hardcode AZ
-  availability_zones = ["us-east-1a"]
+  vpc_zone_identifier = [aws_subnet.sub1a.id, aws_subnet.sub1b.id]
   desired_capacity   = 1
   max_size           = 2
   min_size           = 1
@@ -156,7 +247,7 @@ resource "aws_autoscaling_policy" "as_policy" {
 
 # You must have an already existing hosted zone in AWS.
 # Your have to create the zone manually, so that terraform
-# does not destroy the hosted zone and domain name.
+# does not destroy the hosted zone and deregister the domain name when you run `terraform destroy`
 
 data "aws_route53_zone" "primary" {
   name = var.domain_name
